@@ -161,7 +161,7 @@ class Zend_View_Helper_MinifyHeadScript extends Zend_View_Helper_HeadScript {
 		$this->getContainer()->ksort();
 		foreach ( $this as $item ) {
 			
-			if (isset($item->attributes ['src']) && !empty($item->attributes ['src']) && strpos($item->attributes ['src'], 'http://') === false) {
+			if (isset($item->attributes ['src']) && !empty($item->attributes ['src']) && preg_match('/https?:\/\//', $item->attributes ['src']) == false) {
 				$scripts [] = str_replace($baseUrl, '', $item->attributes ['src']);
 			} else {
 				if (count($scripts) > 0) {
