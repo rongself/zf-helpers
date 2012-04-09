@@ -70,6 +70,42 @@
 
 </script>
 
+ * Sometimes you need the ability to control how script files are combined together, or need several javascript 
+ * files that should not be compressed. 
+
+ $view->headScript()
+                ->appendFile('js/js1.js')
+                ->appendFile('js/js2.js')
+                ->appendFile('js/js3.js', 'text/javascript', array('minify_split_after' => true));
+                ->appendFile('js/js4js')
+
+
+ * These files will be transformed to 
+
+<script text="javascript" src="/min/?f=js/js1.js,js/js2.js,js/js3.js">
+<script text="javascript" src="/min/?f=js/js4.js">
+
+ * It also supports "minify_split_before" and "minify_disabled" that turns compression off for specific script.
+
+ $view->headScript()
+                ->appendFile('js/js1.js', 'text/javascript', array('minify_disabled' => true))
+                ->appendFile('js/js2.js')
+                ->appendFile('js/js3.js', 'text/javascript', array('minify_split_before' => true));
+                ->appendFile('js/js4js')
+
+<script type="text/javascript" src="/js/js1.js"></script>
+<script text="javascript" src="/min/?f=js/js2.js">
+<script text="javascript" src="/min/?f=js/js3.js,js/js4.js">
+
+ * Use this trick to enable/disable minify depending on the config file
+
+        if ($config->minifyJavascriptAndCSS) {
+            $view->registerHelper(new Zend_View_Helper_MinifyHeadScript(), 'headScript');
+            $view->registerHelper(new Zend_View_Helper_MinifyHeadLink(), 'headLink');
+        }     
+
+
+
  * 
  * 
  *
@@ -97,7 +133,7 @@ class Zend_View_Helper_MinifyHeadScript extends Zend_View_Helper_HeadScript {
 	 * Registry key for placeholder
 	 * @var string
 	 */
-	protected $_regKey = 'RC_View_Helper_MinifyHeadScript';
+//	protected $_regKey = 'RC_View_Helper_MinifyHeadScript';
 	
 	/**
 	 * Return headScript object
@@ -137,17 +173,11 @@ class Zend_View_Helper_MinifyHeadScript extends Zend_View_Helper_HeadScript {
 		// An array of Javascript Items
 		$scripts = array();
 		
-		// The base URL
-		$baseUrl = $this->getBaseUrl();
+
 		
 		// Any indentation we should use.
 		$indent = (null !== $indent) ? $this->getWhitespace($indent) : $this->getIndent();
-		
-		//remove the slash at the beginning if there is one  
-		if (substr($baseUrl, 0, 1) == '/') {
-			$baseUrl = substr($baseUrl, 1);
-		}
-		
+			
 		// Determining the appropriate way to handle inline scripts
 		if ($this->view) {
 			$useCdata = $this->view->doctype()->isXhtml() ? true : false;
@@ -159,43 +189,56 @@ class Zend_View_Helper_MinifyHeadScript extends Zend_View_Helper_HeadScript {
 		$escapeEnd = ($useCdata) ? '//]]>' : '//-->';
 		
 		$this->getContainer()->ksort();
-		foreach ( $this as $item ) {
-			
-			if (isset($item->attributes ['src']) && !empty($item->attributes ['src']) && preg_match('/https?:\/\//', $item->attributes ['src']) == false) {
-				$scripts [] = str_replace($baseUrl, '', $item->attributes ['src']);
-			} else {
-				if (count($scripts) > 0) {
-					$minScript = new stdClass();
-					$minScript->type = 'text/javascript';
-					// We will create our minify URL here. 
-					if (is_null($baseUrl) || $baseUrl == '') {
-						$minScript->attributes ['src'] = $this->getMinUrl() . '?f=' . implode(',', $scripts);
-					} else {
-						$minScript->attributes ['src'] = $this->getMinUrl() . '?b=' . $baseUrl . '&f=' . implode(',', $scripts);
-					}
-					$scripts = array(); // Empty our scripts array
-					$items [] = $this->itemToString($minScript, '', '', ''); // add the minified item
-				}
-				$items [] = $this->itemToString($item, $indent, $escapeStart, $escapeEnd); // add this item
-			}
+        $groupIndex = 0;
+		foreach ($this as $i => $item) {
+            if ($this->_isNeedToMinify($item)) {
+                if (!empty($item->attributes['minify_split_before']) || !empty($item->attributes['minify_split'])) {
+                    $items[] = $this->_generateMinifyItem($scripts);
+                    $scripts = array();
+                }                
+                $scripts[] = $item->attributes['src'];
+                if (!empty($item->attributes['minify_split_after']) || !empty($item->attributes['minify_split'])) {
+                    $items[] = $this->_generateMinifyItem($scripts);
+                    $scripts = array();
+                }
+            } else {
+                if ($scripts) {
+                    $items[] = $this->_generateMinifyItem($scripts);
+                    $scripts = array();
+                }
+                $items[] = $this->itemToString($item, $indent, $escapeStart, $escapeEnd);
+            }
 		}
-		
-		// Make sure we pick up the final minified item if it exists.
-		if (count($scripts) > 0) {
-			$minScript = new stdClass();
-			$minScript->type = 'text/javascript';
-			// We will create our minify URL here. 
-			if (is_null($baseUrl) || $baseUrl == '') {
-				$minScript->attributes ['src'] = $this->getMinUrl() . '?f=' . implode(',', $scripts);
-			} else {
-				$minScript->attributes ['src'] = $this->getMinUrl() . '?b=' . $baseUrl . '&f=' . implode(',', $scripts);
-			}
-			$scripts = array(); // Empty our scripts array
-			$items [] = $this->itemToString($minScript, '', '', '');
-		}
-		
+        if ($scripts) {
+            $items[] = $this->_generateMinifyItem($scripts);
+        }        
+        
 		return $indent . implode($this->_escape($this->getSeparator()) . $indent, $items);
 	}
+    
+    protected function _isNeedToMinify($item)
+    {
+        return isset($item->attributes ['src']) 
+                && !empty($item->attributes ['src']) 
+                && preg_match('/^https?:\/\//', $item->attributes['src']) == false
+                && !isset($item->attributes['minify_disabled']);
+    }
+    
+    protected function _generateMinifyItem(array $scripts)
+    {
+		$baseUrl = $this->getBaseUrl();
+		if (substr($baseUrl, 0, 1) == '/') {
+			$baseUrl = substr($baseUrl, 1);
+		}        
+        $minScript = new stdClass();
+        $minScript->type = 'text/javascript';
+        if (is_null($baseUrl) || $baseUrl == '') {
+            $minScript->attributes['src'] = $this->getMinUrl() . '?f=' . implode(',', $scripts);
+        } else {
+            $minScript->attributes['src'] = $this->getMinUrl() . '?b=' . $baseUrl . '&f=' . implode(',', $scripts);
+        }
+        return $this->itemToString($minScript, '', '', '');      
+    }
 	
 	/**
 	 * Retrieve the minify url
