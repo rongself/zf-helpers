@@ -104,6 +104,7 @@ class Zend_View_Helper_MinifyHeadLink extends Zend_View_Helper_HeadLink {
 	public function toString($indent = null) {
 		
 		$indent = (null !== $indent) ? $this->getWhitespace($indent) : $this->getIndent();
+		$trimmedBaseUrl = trim($this->getBaseUrl(), '/');
 		
 		$items = array();
 		$stylesheets = array();
@@ -120,6 +121,7 @@ class Zend_View_Helper_MinifyHeadLink extends Zend_View_Helper_HeadLink {
 					$minStyles->rel = 'stylesheet';
 					$minStyles->type = 'text/css';
 					$minStyles->href = $this->getMinUrl() . '?f=' . implode(',', $styles);
+					if ($trimmedBaseUrl) $minStyles->href .= '&b=' . $trimmedBaseUrl;
 					$minStyles->media = $media;
 					$minStyles->conditionalStylesheet = false;
 					if (in_array($this->itemToString($minStyles), $seen)) {
@@ -140,6 +142,7 @@ class Zend_View_Helper_MinifyHeadLink extends Zend_View_Helper_HeadLink {
 			$minStyles->rel = 'stylesheet';
 			$minStyles->type = 'text/css';
 			$minStyles->href = $this->getMinUrl() . '?f=' . implode(',', $styles);
+			if ($trimmedBaseUrl) $minStyles->href .= '&b=' . $trimmedBaseUrl;
 			$minStyles->media = $media;
 			$minStyles->conditionalStylesheet = false;
 			if (in_array($this->itemToString($minStyles), $seen)) {
